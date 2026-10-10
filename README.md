@@ -61,6 +61,8 @@ will this patient be readmitted within 30 days (`1`) or not (`0`)?
 Gradient Boosting was selected as the final model based on the best AUC
 and recall on the minority class.
 
+![ROC curve comparison of all three models](eda_outputs/model_comparison_roc.png)
+
 ### 4. Interpretation (SHAP)
 Used SHAP to confirm the model learned clinically plausible patterns rather
 than noise. Top predictors: prior inpatient utilization, discharge
@@ -74,6 +76,8 @@ data-collection patterns (e.g. correlated with hospital site or
 socioeconomic factors) rather than a direct clinical signal — a fairness
 consideration that would need further investigation before any real-world
 use.
+
+![SHAP feature importance](eda_outputs/shap_summary_bar.png)
 
 ## Results and limitations
 
