@@ -1,0 +1,65 @@
+name: CI
+
+# Runs automatically on every push and every pull request against main.
+# This is what "continuous integration" means in practice: catch a
+# broken API before it's merged, not after.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements_api.txt
+          pip install pytest httpx
+
+      - name: Generate CI fixture model
+        # Real model/data are gitignored (correctly). This creates a
+        # throwaway model with the right schema so the API can boot
+        # and be tested structurally. See tests/generate_fixture_model.py
+        # for the full explanation.
+        run: python tests/generate_fixture_model.py
+
+      - name: Run API tests
+        run: pytest tests/ -v
+
+  docker-build:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies (needed to generate the fixture model)
+        run: pip install -r requirements_api.txt
+
+      - name: Generate CI fixture model
+        run: python tests/generate_fixture_model.py
+
+      - name: Build Docker image
+        run: docker build -t readmission-api .
+
+      - name: Run container and check /health
+        run: |
+          docker run -d -p 8000:8000 --name test-container readmission-api
+          sleep 5
+          curl --fail http://localhost:8000/health
+          docker stop test-container
