@@ -34,7 +34,7 @@ jobs:
         run: python tests/generate_fixture_model.py
 
       - name: Run API tests
-        run: pytest tests/ -v
+        run: python -m pytest tests/ -v
 
   docker-build:
     runs-on: ubuntu-latest
