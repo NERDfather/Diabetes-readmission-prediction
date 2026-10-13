@@ -94,6 +94,16 @@ class PredictionResponse(BaseModel):
     readmission_risk_probability: float
     predicted_readmission_30d: bool
     risk_tier: str
+    note: str = (
+        "predicted_readmission_30d uses the standard 0.5 probability cutoff. "
+        "risk_tier uses lower, more sensitive thresholds (>=0.30 = High) because "
+        "this model's training data is imbalanced (~11% positive class): most true "
+        "readmissions never cross 0.5 probability, so a plain 0.5 cutoff misses "
+        "many real cases (see the project README's limitations section). In a real "
+        "deployment, risk_tier -- not the binary flag -- is the field to act on, "
+        "with the exact thresholds tuned against the real-world cost of a missed "
+        "readmission vs. an unnecessary follow-up."
+    )
 
 
 @app.get("/")
