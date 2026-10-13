@@ -1,0 +1,14 @@
+# Trained model artifact -- regenerate locally with 07_train_final_model.py
+# rather than committing it. Keeps the repo small and avoids binary diffs.
+model_pipeline.joblib
+
+# Raw and intermediate data (already documented in README how to obtain)
+data/
+*.csv
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Jupyter checkpoints
+.ipynb_checkpoints/

@@ -1,0 +1,13 @@
+# Files/folders excluded from the Docker build context.
+# Keeps the image small and avoids accidentally shipping notebooks,
+# raw data, or local junk into the container.
+data/
+eda_outputs/
+*.ipynb
+.ipynb_checkpoints/
+__pycache__/
+*.pyc
+.git/
+.gitignore
+README.md
+LICENSE
