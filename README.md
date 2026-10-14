@@ -98,6 +98,39 @@ default cutoff.
 tool**, and should not be used for real patient care decisions without
 substantial further validation.
 
+## Intended Use & Limitations
+
+**What this project demonstrates:** the full lifecycle of a classical ML
+project — problem framing, EDA, leakage-aware data cleaning, model
+comparison, interpretability, and deployment as a tested, containerized
+API. That is its purpose: a portfolio piece showing these skills
+end-to-end, not a finished clinical product.
+
+**How the deployed API is meant to be used:** as a decision-support
+signal for a human, not an automated decision-maker. A realistic
+integration would surface the `risk_tier` field to a discharge nurse or
+case manager alongside a patient's other information, to help prioritize
+limited follow-up resources (e.g. a post-discharge phone call) toward
+higher-risk patients — never to approve, deny, or automate any care
+decision on its own.
+
+**What would be required before any real-world use**, none of which
+has been done here:
+- Validation on data from the hospitals/population it would actually
+  be used on (this dataset is US hospitals, 1999–2008 — outdated and
+  not necessarily representative of any specific hospital today)
+- Clinical and regulatory review (this is health-adjacent software;
+  real deployment would involve compliance requirements like HIPAA
+  and likely FDA considerations depending on how it's used)
+- A fairness audit, given the unresolved `payer_code` finding above
+- Threshold tuning done with clinical stakeholders against a real cost
+  matrix, not the illustrative cutoffs used here
+- Ongoing monitoring for model drift once in production
+
+**In short:** treat the probabilities and risk tiers this API returns
+as what they are — the output of a learning exercise — not as medical
+advice or a validated risk assessment.
+
 ## Deployment
 
 The final Gradient Boosting model is served as a FastAPI service,
