@@ -38,7 +38,7 @@ from sklearn.metrics import roc_auc_score, brier_score_loss
 HIGH_TIER = 0.30  # same cutoff app.py uses for risk_tier == "High"
 
 # ---------------------------------------------------------------- data prep
-df = pd.read_csv("data/diabetic_data_clean.csv")
+df = pd.read_csv("diabetic_data_clean.csv")
 
 NEAR_CONSTANT = [
     "nateglinide", "chlorpropamide", "acetohexamide", "tolbutamide",
