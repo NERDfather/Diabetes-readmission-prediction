@@ -26,6 +26,7 @@ from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.pipeline import Pipeline
 from sklearn.ensemble import GradientBoostingClassifier
+from sklearn.isotonic import IsotonicRegression
 
 rng = np.random.RandomState(0)
 n = 200
@@ -33,7 +34,6 @@ n = 200
 categorical_options = {
     "race": ["Caucasian", "AfricanAmerican", "Unknown"],
     "gender": ["Female", "Male"],
-    "payer_code": ["Unknown", "MC", "HM"],
     "medical_specialty": ["Unknown", "Cardiology", "Pediatrics-Endocrinology"],
     "max_glu_serum": ["Not tested", "Norm", "High"],
     "A1Cresult": ["Not tested", "Norm", "High"],
@@ -92,8 +92,20 @@ pipeline = Pipeline([
 ])
 pipeline.fit(X, y)
 
+# Same extra artifact pieces the real training script saves, so the API
+# code path (calibration + tiers) is exercised in CI too.
+raw = pipeline.predict_proba(X)[:, 1]
+calibrator = IsotonicRegression(out_of_bounds="clip").fit(raw, y)
+cal = calibrator.predict(raw)
+
 artifact = {
     "pipeline": pipeline,
+    "calibrator": calibrator,
+    "tier_thresholds": {
+        "moderate": float(np.quantile(cal, 0.50)),
+        "high": float(np.quantile(cal, 0.80)),
+    },
+    "baseline_rate": float(y.mean()),
     "feature_columns": X.columns.tolist(),
     "categorical_columns": categorical_cols,
     "numeric_columns": numeric_cols,

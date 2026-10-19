@@ -10,13 +10,13 @@ to run and test it yourself.
 diabetic_data_clean.csv
         |
         v
-07_train_final_model.py  --> model_pipeline.joblib  (gitignored -- regenerate locally)
+07_train_final_model.py  --> model_pipeline.joblib  (model + calibrator + tier cutoffs; gitignored)
         |
         v
       app.py  (FastAPI service)
         |
         +--> /health    liveness + "did the model load" check
-        +--> /predict   validates input (Pydantic) -> runs pipeline -> returns risk
+        +--> /predict   validates input (Pydantic) -> model -> calibrate -> tier
         |
         v
     Dockerfile  --> self-contained container, runs identically anywhere
@@ -62,23 +62,38 @@ random synthetic data with the *same column schema* as the real one --
 just enough to exercise this code path. It is never used for anything
 except CI.
 
-## The two prediction thresholds
+## Calibrated probabilities and data-driven risk tiers
 
-`/predict` returns both `predicted_readmission_30d` (a plain yes/no at
-the standard 0.5 probability cutoff) and `risk_tier` (Low/Moderate/High,
-using lower, more sensitive thresholds). These intentionally disagree
-sometimes -- e.g. a patient at 43% probability gets `false` for the
-binary flag but `"High"` for the tier.
+An audit of the first deployed version (`08_calibration_fairness.py`)
+found two problems, and this design is the fix.
 
-This isn't a bug. The training data is imbalanced (~11% positive
-class), so most true readmissions never cross 50% predicted probability
--- a plain 0.5 cutoff misses the majority of real cases (see the main
-README's limitations section for the precision/recall numbers). In a
-real deployment, `risk_tier` -- not the binary flag -- is the field a
-care team would act on, with its exact thresholds tuned against the
-real-world cost of a missed readmission versus an unnecessary
-follow-up call. The API returns both, with a `note` field explaining
-this, so nothing is hidden behind a single number.
+**Problem 1: the score was not a probability.** The model is trained with
+balanced sample weights to cope with the ~11% positive class. That
+inflates the raw scores: they averaged 0.46 on held-out patients whose
+true readmission rate was 0.11. A user reading "43% risk" would have been
+badly misled.
+
+**Fix:** `07_train_final_model.py` trains on ~80% of patients and fits an
+isotonic calibrator on the other ~20% (split by patient, so nobody is on
+both sides). The API passes every raw score through the calibrator, and
+`readmission_risk_probability` is now a real estimate. Held-out
+calibration error fell from 0.347 to 0.008.
+
+**Problem 2: the hand-picked tiers were useless.** The original fixed
+cutoffs (0.15 / 0.30) were applied to the inflated score and put about
+89% of patients in "High". They were illustrative numbers I had not
+checked against the score distribution.
+
+**Fix:** tiers are defined on the calibrated score from its own
+distribution: Low = lower-risk half, Moderate = next 30%, High = top 20%.
+The cutoffs are saved in the model artifact. The response also includes
+`baseline_rate`, so a reader can see how a patient's probability compares
+with the average, and a `note` field explains all of this.
+
+The binary `predicted_readmission_30d` flag was removed in v2.0.0. With
+calibrated probabilities, a 0.5 cutoff almost never fires, so the flag
+added confusion rather than information. The tier is the field to act on,
+and only as a prioritisation aid: the model's ROC-AUC is about 0.66.
 
 ## Running it yourself
 
@@ -126,7 +141,8 @@ a production clinical system. Things a real deployment would add:
   was trained on
 - **Autoscaling / a managed hosting platform** rather than a single
   container
-- **Threshold tuning against a real cost matrix**, done with clinical
-  stakeholders, not the illustrative cutoffs used here
+- **Tier cutoffs tuned against a real cost matrix**, done with clinical
+  stakeholders; the top-20% / next-30% split is a transparent default,
+  not a validated choice
 - **Clinical validation** before any real-world use -- see the main
   README's limitations section

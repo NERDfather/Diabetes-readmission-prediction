@@ -26,7 +26,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.utils.class_weight import compute_sample_weight
 
-df = pd.read_csv("data/diabetic_data_clean.csv")
+df = pd.read_csv("diabetic_data_clean.csv")
 
 NEAR_CONSTANT = [
     "nateglinide", "chlorpropamide", "acetohexamide", "tolbutamide",

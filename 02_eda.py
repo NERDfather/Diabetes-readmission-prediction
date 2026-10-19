@@ -14,7 +14,7 @@ import os
 pd.set_option("display.max_columns", None)
 os.makedirs("eda_outputs", exist_ok=True)
 
-df = pd.read_csv("data/diabetic_data.csv", na_values="?", low_memory=False)
+df = pd.read_csv("diabetic_data.csv", na_values="?", low_memory=False)
 
 # Binarize target for easier analysis (full 3-class version stays available too)
 df["readmit_30d"] = (df["readmitted"] == "<30").astype(int)

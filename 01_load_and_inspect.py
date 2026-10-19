@@ -1,14 +1,7 @@
 """
 Step 1-2: Load and inspect the Diabetes 130-US Hospitals dataset.
 
-Download the data first from the UCI ML Repository:
-  https://archive.ics.uci.edu/dataset/296/diabetes+130-us+hospitals+for+years+1999-2008
 
-You'll get a zip containing:
-  - diabetic_data.csv      (the main dataset, ~100k rows)
-  - IDs_mapping.csv        (lookup table decoding some ID columns)
-
-Place both files in a `data/` folder next to this script before running.
 """
 
 import pandas as pd
@@ -22,7 +15,7 @@ pd.set_option("display.width", 120)
 # IMPORTANT: this dataset uses the literal string "?" for missing values,
 # not blank cells or NaN. If you don't tell pandas this, missingness
 # analysis and dtype inference will silently be wrong.
-df = pd.read_csv("data/diabetic_data.csv", na_values="?")
+df = pd.read_csv("diabetic_data.csv", na_values="?")
 
 print("=" * 70)
 print("SHAPE")

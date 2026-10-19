@@ -19,7 +19,6 @@ EXAMPLE_PATIENT = {
     "discharge_disposition_id": 1,
     "admission_source_id": 7,
     "time_in_hospital": 3,
-    "payer_code": "Unknown",
     "medical_specialty": "Unknown",
     "num_lab_procedures": 45,
     "num_procedures": 1,
@@ -67,7 +66,8 @@ def test_predict_returns_well_formed_response():
     body = response.json()
 
     assert "readmission_risk_probability" in body
-    assert "predicted_readmission_30d" in body
+    assert "baseline_rate" in body
+    assert "predicted_readmission_30d" not in body  # removed in v2.0.0
     assert "risk_tier" in body
     assert "note" in body
 
@@ -75,6 +75,14 @@ def test_predict_returns_well_formed_response():
     # fixture model's (meaningless) predicted value.
     assert 0.0 <= body["readmission_risk_probability"] <= 1.0
     assert body["risk_tier"] in {"Low", "Moderate", "High"}
+
+
+def test_predict_ignores_removed_payer_code_field():
+    # payer_code was dropped from the model; clients that still send it
+    # should not break.
+    patient = dict(EXAMPLE_PATIENT, payer_code="Unknown")
+    response = client.post("/predict", json=patient)
+    assert response.status_code == 200
 
 
 def test_predict_rejects_missing_field():

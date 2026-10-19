@@ -14,7 +14,7 @@ in a portfolio piece.
 import pandas as pd
 import numpy as np
 
-df = pd.read_csv("data/diabetic_data.csv", na_values="?", low_memory=False)
+df = pd.read_csv("diabetic_data.csv", na_values="?", low_memory=False)
 print(f"Starting rows: {len(df):,}")
 
 # ---------------------------------------------------------------------

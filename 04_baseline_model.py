@@ -25,7 +25,7 @@ from sklearn.metrics import (
 )
 import matplotlib.pyplot as plt
 
-df = pd.read_csv("data/diabetic_data_clean.csv")
+df = pd.read_csv("diabetic_data_clean.csv")
 
 # ---------------------------------------------------------------------
 # 1. Drop near-constant medication columns identified in step 4

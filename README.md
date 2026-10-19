@@ -56,12 +56,13 @@ will this patient be readmitted within 30 days (`1`) or not (`0`)?
 
 | Model | ROC-AUC | Recall (readmitted) | Precision (readmitted) |
 |---|---|---|---|
-| Logistic Regression | 0.655 | 0.54 | 0.17 |
-| Random Forest | 0.662 | 0.53 | 0.18 |
-| **Gradient Boosting** | **0.674** | 0.60 | 0.17 |
+| Logistic Regression | 0.647 | 0.53 | 0.17 |
+| Random Forest | 0.659 | 0.55 | 0.18 |
+| **Gradient Boosting** | **0.660** | 0.58 | 0.18 |
 
 Gradient Boosting was selected as the final model based on the best AUC
-and recall on the minority class.
+and recall on the minority class, although the differences between the
+three models are small (about one AUC point).
 
 ![ROC curve comparison of all three models](eda_outputs/model_comparison_roc.png)
 
@@ -72,27 +73,60 @@ disposition, total prior utilization, number of diagnoses, and diabetes
 medication/insulin status — consistent with established clinical risk
 factors for readmission.
 
-**Caveat worth noting:** `payer_code` being missing ranked unexpectedly
-high in feature importance. This may reflect administrative or
-data-collection patterns (e.g. correlated with hospital site or
-socioeconomic factors) rather than a direct clinical signal — a fairness
-consideration that would need further investigation before any real-world
-use.
+**Caveat, and what I did about it:** `payer_code` being missing ranked
+unexpectedly high in feature importance. It may reflect administrative or
+data-collection patterns (e.g. hospital site or socioeconomic factors)
+rather than a clinical signal. I tested this in the audit below: removing
+it changed test AUC by only 0.002 (0.660 to 0.658) and barely moved who got
+flagged in any group, so the deployed model **no longer uses `payer_code`**.
+This does not prove it was a proxy, only that the model loses nothing
+without it.
 
 ![SHAP feature importance](eda_outputs/shap_summary_bar.png)
 
 ## Results and limitations
 
-An AUC of ~0.67 is consistent with published benchmarks on this dataset
-and reflects a genuinely hard prediction problem: 30-day readmission
+An AUC of ~0.66 is comparable to other published models on this dataset
+(a 2025 study on the same data reports 0.63 to 0.67, without grouping
+records by patient) and reflects a genuinely hard prediction problem: 30-day readmission
 depends heavily on factors not captured in administrative/billing data
 (e.g. social support, medication adherence, post-discharge complications).
 
-At the default 0.5 threshold, the model catches ~60% of true readmissions
-at the cost of many false positives (precision ~0.17). In a real deployment,
-the decision threshold would be tuned against the actual cost of a missed
-readmission vs. an unnecessary follow-up intervention — not left at a
-default cutoff.
+At the default 0.5 threshold on the raw score, the model catches ~58% of
+true readmissions at the cost of many false positives (precision ~0.18).
+Against an 11.4% base rate, that means a flagged patient is only about 1.6
+times more likely than average to be readmitted. By common clinical
+standards (AUC of 0.7 or more) this is weak discrimination.
+
+### Calibration and fairness audit (`08_calibration_fairness.py`)
+
+I audited the model on the held-out patients and it exposed two problems
+in my first deployment, both now fixed:
+
+- **The raw scores were not probabilities.** Training with balanced
+  sample weights inflated them: mean predicted 0.461 against an observed
+  rate of 0.114 (Brier 0.2237, worse than always predicting the base rate
+  at 0.1009). Fixed with an isotonic calibrator fit on patients the model
+  never trained on: calibration error fell from 0.347 to 0.008 and the
+  Brier score to 0.0973, a modest ~4% gain over the base-rate guess,
+  consistent with the weak AUC.
+- **My hand-picked risk tiers were useless.** The original 0.30 "High"
+  cutoff flagged about 89% of patients. Tiers are now defined on the
+  calibrated score (Low = lower-risk half, Moderate = next 30%, High = top
+  20%).
+
+Fairness findings on the held-out set (single split, no confidence
+intervals, so read as indicative, not conclusive):
+
+| Group | Finding |
+|---|---|
+| `payer_code` | Dropping it: AUC 0.660 to 0.658, flag rates essentially unchanged |
+| Gender | No meaningful gap |
+| Race | AUC 0.628 (African American) vs 0.665 (Caucasian); flag rates similar (88% vs 90%). Hispanic (0.762) and Asian estimates rest on very few positive cases |
+| Age | **Performance degrades with age:** AUC about 0.74 at ages 20-30, 0.62 at 80-90, 0.49 (chance) at 90+ |
+
+The age pattern is the main unresolved issue: the model is weakest for the
+oldest patients, who are among the most frequently readmitted.
 
 **This model is a portfolio/learning project, not a validated clinical
 tool**, and should not be used for real patient care decisions without
@@ -122,9 +156,12 @@ has been done here:
 - Clinical and regulatory review (this is health-adjacent software;
   real deployment would involve compliance requirements like HIPAA
   and likely FDA considerations depending on how it's used)
-- A fairness audit, given the unresolved `payer_code` finding above
-- Threshold tuning done with clinical stakeholders against a real cost
-  matrix, not the illustrative cutoffs used here
+- A fuller fairness audit with confidence intervals and a fixed-share
+  threshold comparison, addressing the weaker performance for older
+  patients found above
+- Tier cutoffs set with clinical stakeholders against a real cost matrix;
+  the current top-20% / next-30% split is a transparent default, not a
+  validated choice
 - Ongoing monitoring for model drift once in production
 
 **In short:** treat the probabilities and risk tiers this API returns
@@ -138,15 +175,17 @@ containerized with Docker, and tested automatically on every push via
 GitHub Actions CI. See [MLOPS.md](MLOPS.md) for the full architecture,
 how to run it yourself, and the reasoning behind each deployment
 decision (including why the trained model isn't committed to this repo,
-and why the API reports two different risk thresholds).
+and why the API returns calibrated probabilities with data-driven risk
+tiers).
 
 ## What I'd do with more time
 
 - Tune the Gradient Boosting hyperparameters (currently default-ish) with
   proper nested cross-validation
-- Investigate the `payer_code` finding further — check whether it's a
-  hospital-site proxy and whether removing it changes fairness across
-  patient subgroups
+- Investigate why performance drops for patients over 80, and report
+  bootstrap confidence intervals for every subgroup metric
+- Test whether other features (e.g. discharge disposition, admission
+  source) act as hospital-site proxies now that `payer_code` is gone
 - Try threshold tuning against an explicit cost matrix
 - Add authentication, request logging to a real database, and model
   drift monitoring to the deployed API (see MLOPS.md's "out of scope" section)
@@ -169,7 +208,8 @@ and why the API reports two different risk thresholds).
 ├── 04_baseline_model.py
 ├── 05_compare_models.py
 ├── 06_interpret_shap.py
-├── 07_train_final_model.py        # trains + saves the deployed model
+├── 07_train_final_model.py        # trains, calibrates + saves the deployed model
+├── 08_calibration_fairness.py     # calibration + fairness + payer_code audit
 ├── app.py                         # FastAPI serving layer
 ├── Dockerfile
 ├── requirements.txt                # for the ML/analysis scripts (01-06)
@@ -184,7 +224,7 @@ and why the API reports two different risk thresholds).
    [UCI repository](https://archive.ics.uci.edu/dataset/296/diabetes+130-us+hospitals+for+years+1999-2008)
    and place them in a `data/` folder.
 2. Install dependencies: `pip install -r requirements.txt`
-3. Run the scripts in order (01 through 06).
+3. Run the scripts in order (01 through 08).
 
 ## Author
 

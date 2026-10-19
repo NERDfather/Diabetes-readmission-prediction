@@ -24,7 +24,7 @@ from sklearn.metrics import (
 )
 import matplotlib.pyplot as plt
 
-df = pd.read_csv("data/diabetic_data_clean.csv")
+df = pd.read_csv("diabetic_data_clean.csv")
 
 NEAR_CONSTANT = [
     "nateglinide", "chlorpropamide", "acetohexamide", "tolbutamide",

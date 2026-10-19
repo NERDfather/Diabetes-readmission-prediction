@@ -29,7 +29,7 @@ app = FastAPI(
     title="Diabetes 30-Day Readmission Risk API",
     description="Predicts the probability a diabetic patient will be "
                  "readmitted to hospital within 30 days of discharge.",
-    version="1.0.0",
+    version="2.0.0",
 )
 
 # ---------------------------------------------------------------------
@@ -40,10 +40,16 @@ app = FastAPI(
 try:
     artifact = joblib.load("model_pipeline.joblib")
     pipeline = artifact["pipeline"]
+    calibrator = artifact["calibrator"]
+    TIER_THRESHOLDS = artifact["tier_thresholds"]
+    BASELINE_RATE = artifact["baseline_rate"]
     FEATURE_COLUMNS = artifact["feature_columns"]
     logger.info(f"Model loaded successfully. Expects {len(FEATURE_COLUMNS)} features.")
 except FileNotFoundError:
     pipeline = None
+    calibrator = None
+    TIER_THRESHOLDS = {}
+    BASELINE_RATE = None
     FEATURE_COLUMNS = []
     logger.error("model_pipeline.joblib not found. Run 07_train_final_model.py first.")
 
@@ -61,7 +67,6 @@ class PatientEncounter(BaseModel):
     discharge_disposition_id: int = Field(..., examples=[1])
     admission_source_id: int = Field(..., examples=[7])
     time_in_hospital: int = Field(..., ge=1, le=14, examples=[3])
-    payer_code: str = Field(..., examples=["Unknown"])
     medical_specialty: str = Field(..., examples=["Unknown"])
     num_lab_procedures: int = Field(..., ge=0, examples=[45])
     num_procedures: int = Field(..., ge=0, examples=[1])
@@ -92,17 +97,16 @@ class PatientEncounter(BaseModel):
 
 class PredictionResponse(BaseModel):
     readmission_risk_probability: float
-    predicted_readmission_30d: bool
     risk_tier: str
+    baseline_rate: float
     note: str = (
-        "predicted_readmission_30d uses the standard 0.5 probability cutoff. "
-        "risk_tier uses lower, more sensitive thresholds (>=0.30 = High) because "
-        "this model's training data is imbalanced (~11% positive class): most true "
-        "readmissions never cross 0.5 probability, so a plain 0.5 cutoff misses "
-        "many real cases (see the project README's limitations section). In a real "
-        "deployment, risk_tier -- not the binary flag -- is the field to act on, "
-        "with the exact thresholds tuned against the real-world cost of a missed "
-        "readmission vs. an unnecessary follow-up."
+        "readmission_risk_probability is a calibrated estimate of the chance of "
+        "readmission within 30 days. risk_tier ranks this patient against the "
+        "population the model was calibrated on: Low = lower-risk half, "
+        "Moderate = next 30%, High = top 20%. The model's discrimination is "
+        "modest (ROC-AUC about 0.66), so use these as a prioritisation aid for "
+        "a human, never as a clinical decision. baseline_rate is the average "
+        "readmission rate in the training data."
     )
 
 
@@ -131,24 +135,27 @@ def predict(patient: PatientEncounter):
     input_df = pd.DataFrame([input_dict])[FEATURE_COLUMNS]
 
     try:
-        proba = pipeline.predict_proba(input_df)[0, 1]
+        raw = pipeline.predict_proba(input_df)[0, 1]
+        # The raw score is inflated by class-balanced training, so it is
+        # mapped to a real probability by the calibrator before use.
+        proba = float(calibrator.predict([raw])[0])
     except Exception as e:
         logger.error(f"Prediction failed: {e}")
         raise HTTPException(status_code=400, detail=f"Prediction failed: {e}")
 
-    # Simple three-tier risk bucketing for readability. Thresholds here
-    # are illustrative, not clinically validated -- say so in your docs.
-    if proba < 0.15:
-        tier = "Low"
-    elif proba < 0.30:
+    # Tiers come from the calibrated score's distribution (see
+    # 07_train_final_model.py), not hand-picked cutoffs.
+    if proba >= TIER_THRESHOLDS["high"]:
+        tier = "High"
+    elif proba >= TIER_THRESHOLDS["moderate"]:
         tier = "Moderate"
     else:
-        tier = "High"
+        tier = "Low"
 
     logger.info(f"Prediction made: probability={proba:.3f}, tier={tier}")
 
     return PredictionResponse(
-        readmission_risk_probability=round(float(proba), 4),
-        predicted_readmission_30d=bool(proba >= 0.5),
+        readmission_risk_probability=round(proba, 4),
         risk_tier=tier,
+        baseline_rate=round(float(BASELINE_RATE), 4),
     )
