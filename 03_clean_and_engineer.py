@@ -4,11 +4,6 @@ Step 4: Clean and engineer features.
 Takes the raw diabetic_data.csv and produces a cleaned dataset ready for
 modeling, saved to data/diabetic_data_clean.csv.
 
-Every decision below is tied to something found in EDA (step 3). Where a
-decision depends on a lookup table (IDs_mapping.csv), CHECK IT YOURSELF —
-the comments give my best recollection of the standard mapping for this
-dataset, but you should verify against your own copy before trusting it
-in a portfolio piece.
 """
 
 import pandas as pd
